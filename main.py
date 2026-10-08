@@ -51,29 +51,83 @@ _PID_FILE = os.path.join(tempfile.gettempdir(), "city_council_bot.pid")
 # Sibling-killer helpers
 # ---------------------------------------------------------------------------
 
-def _find_sibling_pids() -> list[int]:
-    """Return PIDs of other python processes that are running main.py."""
-    my_pid = os.getpid()
-    siblings: list[int] = []
+_SCRIPT_PATH = os.path.realpath(__file__)
 
+
+def _ancestor_pids(parent_of: dict[int, int]) -> set[int]:
+    """Return our own PID plus every ancestor (e.g. the launching shell)."""
+    pids: set[int] = set()
+    pid = os.getpid()
+    while pid > 1 and pid not in pids:
+        pids.add(pid)
+        pid = parent_of.get(pid, 0)
+    return pids
+
+
+def _process_cwd(pid: int) -> str | None:
+    """Return the working directory of *pid* (via lsof), or None if unknown."""
     import subprocess
     try:
         result = subprocess.run(
-            ["ps", "-eo", "pid,args"],
+            ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
             capture_output=True, text=True, timeout=5,
         )
-        for line in result.stdout.splitlines():
-            parts = line.strip().split(None, 1)
-            if len(parts) < 2:
-                continue
-            try:
-                pid = int(parts[0])
-            except ValueError:
-                continue
-            if pid == my_pid:
-                continue
-            args = parts[1]
-            if "python" in args.lower() and "main.py" in args:
+    except Exception:
+        return None
+    for line in result.stdout.splitlines():
+        if line.startswith("n"):
+            return os.path.realpath(line[1:])
+    return None
+
+
+def _runs_this_script(pid: int, args: str) -> bool:
+    """True if *args* is a python process running THIS project's main.py."""
+    if "python" not in args.lower():
+        return False
+    for token in args.split()[1:]:
+        if os.path.basename(token) != "main.py":
+            continue
+        if os.path.isabs(token):
+            if os.path.realpath(token) == _SCRIPT_PATH:
+                return True
+        else:
+            cwd = _process_cwd(pid)
+            if cwd and os.path.realpath(os.path.join(cwd, token)) == _SCRIPT_PATH:
+                return True
+    return False
+
+
+def _list_processes() -> list[tuple[int, int, str]]:
+    """Return (pid, ppid, args) for every process."""
+    import subprocess
+    procs: list[tuple[int, int, str]] = []
+    result = subprocess.run(
+        ["ps", "-eo", "pid=,ppid=,args="],
+        capture_output=True, text=True, timeout=5,
+    )
+    for line in result.stdout.splitlines():
+        parts = line.strip().split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            procs.append((int(parts[0]), int(parts[1]), parts[2]))
+        except ValueError:
+            continue
+    return procs
+
+
+def _find_sibling_pids() -> list[int]:
+    """Return PIDs of other processes running this project's main.py.
+
+    Our own ancestors are skipped: the launching shell (e.g. ``zsh -c
+    "python main.py"``) also matches and must not be killed.
+    """
+    siblings: list[int] = []
+    try:
+        procs = _list_processes()
+        own = _ancestor_pids({pid: ppid for pid, ppid, _ in procs})
+        for pid, _ppid, args in procs:
+            if pid not in own and _runs_this_script(pid, args):
                 siblings.append(pid)
     except Exception as exc:
         logger.warning("Could not list sibling processes: %s", exc)
@@ -90,13 +144,15 @@ def _kill_siblings() -> None:
         try:
             with open(_PID_FILE) as fh:
                 pid_from_file = int(fh.read().strip())
+            # Only trust the PID file if that PID is still running this
+            # script — a stale file may point at a reused, unrelated PID.
             if pid_from_file != os.getpid() and pid_from_file not in siblings:
-                try:
-                    os.kill(pid_from_file, 0)
+                args = next(
+                    (a for p, _, a in _list_processes() if p == pid_from_file), ""
+                )
+                if _runs_this_script(pid_from_file, args):
                     siblings.append(pid_from_file)
-                except OSError:
-                    pass
-        except (ValueError, OSError):
+        except Exception:
             pass
 
     if not siblings:
