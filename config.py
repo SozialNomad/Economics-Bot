@@ -37,6 +37,13 @@ AIR_QUALITY_LOCATION: str = os.getenv("AIR_QUALITY_LOCATION", "würzburg")
 WAQI_BASE_URL: str = "https://api.waqi.info"
 
 # ---------------------------------------------------------------------------
+# Weekly report schedule (local time; turned on/off from Telegram)
+# ---------------------------------------------------------------------------
+WEEKLY_REPORT_DAY: str = os.getenv("WEEKLY_REPORT_DAY", "mon").strip().lower()[:3]
+WEEKLY_REPORT_HOUR: int = int(os.getenv("WEEKLY_REPORT_HOUR", "8"))
+WEEKLY_REPORT_MINUTE: int = int(os.getenv("WEEKLY_REPORT_MINUTE", "0"))
+
+# ---------------------------------------------------------------------------
 # Local storage
 # ---------------------------------------------------------------------------
 DATA_DIR: Path = _PROJECT_ROOT / "data"

@@ -1,8 +1,8 @@
 """
-Green Agent — main entry point.
+EcoNomics Bot — main entry point.
 
-Boots the Telegram bot and the weekly APScheduler on the same
-asyncio event loop. Both run concurrently until interrupted.
+Boots the Telegram bot; the weekly report job runs on the bot's own
+JobQueue on the same asyncio event loop until interrupted.
 
 Conflict-prevention strategy  ("last one wins")
 ------------------------------------------------
@@ -81,10 +81,15 @@ def _process_cwd(pid: int) -> str | None:
 
 
 def _runs_this_script(pid: int, args: str) -> bool:
-    """True if *args* is a python process running THIS project's main.py."""
-    if "python" not in args.lower():
+    """True if *args* is a python process running THIS project's main.py.
+
+    The executable itself must be python, so shells whose command line
+    merely mentions ``python main.py`` are never matched.
+    """
+    argv = args.split()
+    if not argv or not os.path.basename(argv[0]).lower().startswith("python"):
         return False
-    for token in args.split()[1:]:
+    for token in argv[1:]:
         if os.path.basename(token) != "main.py":
             continue
         if os.path.isabs(token):
@@ -306,11 +311,12 @@ def main() -> None:
             await application.bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
                 text=(
-                    "🌿 *Hello! I am Green Agent.* 🌿\n\n"
-                    "I have just been activated. I'm here to help you monitor city air quality "
-                    "and provide environmental insights. You can ask me anything about "
-                    "pollution or type 'report' to see a summary of recent changes.\n\n"
-                    "How can I assist you today?"
+                    "🌿 *Hello! I am EcoNomics Bot.* 🌿\n\n"
+                    "Send me any decision or question and I will evaluate it from two "
+                    "perspectives: *personal interest* and *the environment*, followed "
+                    "by a summary.\n\n"
+                    "Type *report* for the current air quality and climate news, or "
+                    "*help* to see all commands."
                 ),
                 parse_mode="Markdown",
             )
