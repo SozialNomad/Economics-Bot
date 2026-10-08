@@ -50,13 +50,7 @@ Below are the available commands and interaction methods:
 
 ## System Architecture
 
-Our multi-agent flowchart is here to visualize the decision-making process and communication flow between specialized agents:
-
-<img width="1920" height="1080" alt="Agents_Flowchart" src="https://github.com/user-attachments/assets/b4675d44-c4b0-4a2e-bd76-5fdfc9a155a2" />
-
-### Technical Flow
-
-How a Telegram message moves through the code:
+How a Telegram message moves through the agents and the code:
 
 ```mermaid
 flowchart TB
